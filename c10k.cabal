@@ -10,10 +10,11 @@ Description:            Network server library to handle
 			earlier uses select(), it cannot handle
 			connections over 1,024. This library uses
 			the prefork technique to get over the barrier.
+Homepage:               http://github.com/kazu-yamamoto/c10k
 Category:               Network
 Cabal-Version:          >= 1.2
 Build-Type:             Simple
-library
+Library
   GHC-Options:          -Wall -O2
   Exposed-Modules:      Network.C10kServer, Network.TCPInfo
   Build-Depends:        base >= 4, haskell98, network, unix, hdaemonize
