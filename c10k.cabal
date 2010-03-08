@@ -1,0 +1,22 @@
+Name:                   c10k
+Version:                0.1.0
+Author:                 Kazu Yamamoto <kazu@iij.ad.jp>
+Maintainer:             Kazu Yamamoto <kazu@iij.ad.jp>
+License:                BSD3
+License-File:           LICENSE
+Synopsis:               C10k server
+Description:            Network server library to handle
+			over 10,000 connections. Since GHC 6.10.4 or
+			earlier uses select(), it cannot handle
+			connections over 1,024. This library uses
+			the prefork technique to get over the barrier.
+Category:               Network
+Cabal-Version:          >= 1.2
+Build-Type:             Simple
+library
+  GHC-Options:          -Wall -O2
+  Exposed-Modules:      Network.C10kServer, Network.TCPInfo
+  Build-Depends:        base >= 4, haskell98, network, unix, hdaemonize
+Source-Repository head
+  Type:                 git
+  Location:             git://github.com/kazu-yamamoto/c10k.git
