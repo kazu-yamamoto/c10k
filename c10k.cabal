@@ -10,6 +10,10 @@ Description:            Network server library to handle
 			earlier uses select(), it cannot handle
 			connections over 1,024. This library uses
 			the prefork technique to get over the barrier.
+                        Programs complied by GHC 6.10.4 or earlier
+                        with the -threaded option kills the IO thread
+                        when forkProcess is used. So, don't specify
+                        the -threaded option to use this library.
 Homepage:               http://github.com/kazu-yamamoto/c10k
 Category:               Network
 Cabal-Version:          >= 1.6
@@ -17,7 +21,7 @@ Build-Type:             Simple
 Library
   GHC-Options:          -Wall -O2
   Exposed-Modules:      Network.C10kServer, Network.TCPInfo
-  Build-Depends:        base >= 4, haskell98, network, unix, hdaemonize
+  Build-Depends:        base >= 4 && < 10, haskell98, network, unix, hdaemonize
 Source-Repository head
   Type:                 git
   Location:             git://github.com/kazu-yamamoto/c10k.git
