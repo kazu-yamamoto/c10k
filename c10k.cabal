@@ -12,7 +12,7 @@ Description:            Network server library to handle
 			the prefork technique to get over the barrier.
 Homepage:               http://github.com/kazu-yamamoto/c10k
 Category:               Network
-Cabal-Version:          >= 1.2
+Cabal-Version:          >= 1.6
 Build-Type:             Simple
 Library
   GHC-Options:          -Wall -O2
