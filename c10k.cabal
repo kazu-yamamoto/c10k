@@ -4,7 +4,7 @@ Author:                 Kazu Yamamoto <kazu@iij.ad.jp>
 Maintainer:             Kazu Yamamoto <kazu@iij.ad.jp>
 License:                BSD3
 License-File:           LICENSE
-Synopsis:               C10k server
+Synopsis:               C10k server library
 Description:            Network server library to handle
 			over 10,000 connections. Since GHC 6.10.4 or
 			earlier uses select(), it cannot handle
@@ -20,7 +20,7 @@ Cabal-Version:          >= 1.6
 Build-Type:             Simple
 Library
   GHC-Options:          -Wall -O2
-  Exposed-Modules:      Network.C10kServer, Network.TCPInfo
+  Exposed-Modules:      Network.C10kServer Network.TCPInfo
   Build-Depends:        base >= 4 && < 10, haskell98, network, unix, hdaemonize
 Source-Repository head
   Type:                 git
