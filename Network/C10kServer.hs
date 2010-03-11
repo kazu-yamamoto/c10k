@@ -5,8 +5,15 @@
   barrier. Each process handles 'threadNumberPerProcess' connections.
   'preforkProcessNumber' child server processes are preforked. So, this
   server can handle 'preforkProcessNumber' * 'threadNumberPerProcess'
-  connections. To stop all server, send SIGTERM to the parent
-  process. (e.g. @kill `cat PIDFILE`@ where the PID file name is
+  connections.
+
+  Even if GHC supports kqueue or epoll(), it is difficult for RTS
+  to balance over multi-cores. So, this library can be used to
+  make a process for each core and to set limitation of the number
+  to accept connections.
+
+  To stop all server, send SIGTERM to the parent process.
+  (e.g. @kill `cat PIDFILE`@ where the PID file name is
   specified by 'pidFile')
 -}
 module Network.C10kServer (C10kServer, C10kConfig(..),
@@ -15,10 +22,8 @@ module Network.C10kServer (C10kServer, C10kConfig(..),
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
-import IO hiding (catch, try)
 import Network hiding (accept)
-import Network.Socket hiding (accept)
-import Network.TCPInfo
+import Network.Socket
 import Prelude hiding (catch)
 import System.Posix.Process
 import System.Posix.Signals
@@ -30,7 +35,7 @@ import System.Exit
 {-|
   The type of the first argument of 'runC10kServer'.
 -}
-type C10kServer = Handle -> TCPInfo -> IO ()
+type C10kServer = Socket -> IO ()
 
 {-|
   The type of configuration given to 'runC10kServer' as the second
@@ -143,9 +148,9 @@ dispatchOrSleep mvar s srv cnf = do
     dispatchOrSleep mvar s srv cnf
   where
     dispatch = do
-        (hdl,tcpi) <- accept s
+        (sock,_) <- accept s
         increase
-        forkIO $ srv hdl tcpi `finally` (decrease >> (hClose hdl `catch` ignore))
+        forkIO $ srv sock `finally` (decrease >> (sClose sock `catch` ignore))
         return ()
     howMany = readMVar mvar
     increase = modifyMVar_ mvar (return . succ)
