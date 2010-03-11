@@ -145,7 +145,7 @@ dispatchOrSleep mvar s srv cnf = do
     dispatch = do
         (hdl,tcpi) <- accept s
         increase
-        forkIO $ srv hdl tcpi `finally` (decrease >> hClose hdl)
+        forkIO $ srv hdl tcpi `finally` (decrease >> (hClose hdl `catch` ignore))
         return ()
     howMany = readMVar mvar
     increase = modifyMVar_ mvar (return . succ)
