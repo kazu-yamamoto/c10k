@@ -21,6 +21,7 @@ Build-Type:             Simple
 Library
   GHC-Options:          -Wall -O2
   Exposed-Modules:      Network.C10kServer
+                        Network.TCPInfo
   Build-Depends:        base >= 4 && < 10, haskell98, network, unix, hdaemonize
 Source-Repository head
   Type:                 git

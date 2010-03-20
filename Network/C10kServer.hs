@@ -16,15 +16,21 @@
   (e.g. @kill `cat PIDFILE`@ where the PID file name is
   specified by 'pidFile')
 -}
-module Network.C10kServer (C10kServer, C10kConfig(..),
-                           runC10kServer) where
+module Network.C10kServer (
+    C10kConfig(..)
+  , C10kServer,  runC10kServer
+  , C10kServerH, runC10kServerH
+  ) where
 
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
+import IO hiding (catch, try)
 import Network hiding (accept)
 import Network.Socket
 import Prelude hiding (catch)
+import Network.TCPInfo hiding (accept)
+import qualified Network.TCPInfo as T (accept)
 import System.Posix.Process
 import System.Posix.Signals
 import System.Posix.User
@@ -36,6 +42,11 @@ import System.Exit
   The type of the first argument of 'runC10kServer'.
 -}
 type C10kServer = Socket -> IO ()
+
+{-|
+  The type of the first argument of 'runC10kServerH'.
+-}
+type C10kServerH = Handle -> TCPInfo -> IO ()
 
 {-|
   The type of configuration given to 'runC10kServer' as the second
@@ -157,6 +168,87 @@ dispatchOrSleep mvar s srv cnf = do
     decrease = modifyMVar_ mvar (return . pred)
     sleep = threadDelay
 
+----------------------------------------------------------------
+
+{-|
+  Run 'C10kServer' with 'C10kConfig'.
+-}
+runC10kServerH :: C10kServerH -> C10kConfig -> IO ()
+runC10kServerH srv cnf = do
+    initHook cnf `catch` ignore
+    initServerH srv cnf `catch` errorHandle
+    parentStartedHook cnf `catch` ignore
+    doNothing
+  where
+    errorHandle :: SomeException -> IO ()
+    errorHandle e = do
+      exitHook cnf (show e)
+      exitFailure
+    doNothing = do
+      threadDelay $ 5 * microseconds
+      doNothing
+
+----------------------------------------------------------------
+
+initServerH :: C10kServerH -> C10kConfig -> IO ()
+initServerH srv cnf = do
+    let port = Service $ portName cnf
+        n    = preforkProcessNumber cnf
+        pidf = pidFile cnf
+    s <- listenOn port
+    setGroupUser
+    preForkH s n srv cnf
+    sClose s
+    writePidFile pidf
+  where
+    writePidFile pidf = do
+        pid <- getProcessID
+        writeFile pidf $ show pid ++ "\n"
+    setGroupUser = do
+      uid <- getRealUserID
+      when (uid == 0) $ do
+        getGroupEntryForName (group cnf) >>= setGroupID . groupID
+        getUserEntryForName (user cnf) >>= setUserID . userID
+
+preForkH :: Socket -> Int -> C10kServerH -> C10kConfig -> IO ()
+preForkH s n srv cnf = do
+    ignoreSigChild
+    pid <- getProcessID
+    cids <- replicateM n $ forkProcess (runServerH s srv cnf)
+    mapM_ (terminator pid cids) [sigTERM,sigINT]
+  where
+    ignoreSigChild = installHandler sigCHLD Ignore Nothing
+    terminator pid cids sig = installHandler sig (Catch (terminate pid cids)) Nothing
+    terminate pid cids = do
+        mapM_ terminateChild cids
+        signalProcess killProcess pid
+    terminateChild cid =  signalProcess sigTERM cid `catch` ignore
+
+----------------------------------------------------------------
+
+runServerH :: Socket -> C10kServerH -> C10kConfig -> IO ()
+runServerH s srv cnf = do
+    startedHook cnf
+    mvar <- newMVar 0
+    dispatchOrSleepH mvar s srv cnf
+
+dispatchOrSleepH :: MVar Int -> Socket -> C10kServerH -> C10kConfig -> IO ()
+dispatchOrSleepH mvar s srv cnf = do
+    n <- howMany
+    if n > threadNumberPerProcess cnf
+        then sleep (sleepTimer cnf * microseconds)
+        else dispatch
+    dispatchOrSleepH mvar s srv cnf
+  where
+    dispatch = do
+        (hdl,tcpi) <- T.accept s
+        increase
+        forkIO $ srv hdl tcpi `finally` (decrease >> hClose hdl)
+        return ()
+    howMany = readMVar mvar
+    increase = modifyMVar_ mvar (return . succ)
+    decrease = modifyMVar_ mvar (return . pred)
+    sleep = threadDelay
 
 ----------------------------------------------------------------
 
