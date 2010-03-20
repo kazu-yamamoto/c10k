@@ -150,7 +150,7 @@ dispatchOrSleep mvar s srv cnf = do
     dispatch = do
         (sock,_) <- accept s
         increase
-        forkIO $ srv sock `finally` (decrease >> (sClose sock `catch` ignore))
+        forkIO $ srv sock `finally` (decrease >> sClose sock)
         return ()
     howMany = readMVar mvar
     increase = modifyMVar_ mvar (return . succ)
