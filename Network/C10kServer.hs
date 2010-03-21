@@ -92,91 +92,22 @@ data C10kConfig = C10kConfig {
   Run 'C10kServer' with 'C10kConfig'.
 -}
 runC10kServer :: C10kServer -> C10kConfig -> IO ()
-runC10kServer srv cnf = do
-    initHook cnf `catch` ignore
-    initServer srv cnf `catch` errorHandle
-    parentStartedHook cnf `catch` ignore
-    doNothing
-  where
-    errorHandle :: SomeException -> IO ()
-    errorHandle e = do
-      exitHook cnf (show e)
-      exitFailure
-    doNothing = do
-      threadDelay $ 5 * microseconds
-      doNothing
-
-----------------------------------------------------------------
-
-initServer :: C10kServer -> C10kConfig -> IO ()
-initServer srv cnf = do
-    let port = Service $ portName cnf
-        n    = preforkProcessNumber cnf
-        pidf = pidFile cnf
-    s <- listenOn port
-    setGroupUser
-    preFork s n srv cnf
-    sClose s
-    writePidFile pidf
-  where
-    writePidFile pidf = do
-        pid <- getProcessID
-        writeFile pidf $ show pid ++ "\n"
-    setGroupUser = do
-      uid <- getRealUserID
-      when (uid == 0) $ do
-        getGroupEntryForName (group cnf) >>= setGroupID . groupID
-        getUserEntryForName (user cnf) >>= setUserID . userID
-
-preFork :: Socket -> Int -> C10kServer -> C10kConfig -> IO ()
-preFork s n srv cnf = do
-    ignoreSigChild
-    pid <- getProcessID
-    cids <- replicateM n $ forkProcess (runServer s srv cnf)
-    mapM_ (terminator pid cids) [sigTERM,sigINT]
-  where
-    ignoreSigChild = installHandler sigCHLD Ignore Nothing
-    terminator pid cids sig = installHandler sig (Catch (terminate pid cids)) Nothing
-    terminate pid cids = do
-        mapM_ terminateChild cids
-        signalProcess killProcess pid
-    terminateChild cid =  signalProcess sigTERM cid `catch` ignore
-
-----------------------------------------------------------------
-
-runServer :: Socket -> C10kServer -> C10kConfig -> IO ()
-runServer s srv cnf = do
-    startedHook cnf
-    mvar <- newMVar 0
-    dispatchOrSleep mvar s srv cnf
-
-dispatchOrSleep :: MVar Int -> Socket -> C10kServer -> C10kConfig -> IO ()
-dispatchOrSleep mvar s srv cnf = do
-    n <- howMany
-    if n > threadNumberPerProcess cnf
-        then sleep (sleepTimer cnf * microseconds)
-        else dispatch
-    dispatchOrSleep mvar s srv cnf
-  where
-    dispatch = do
-        (sock,_) <- accept s
-        increase
-        forkIO $ srv sock `finally` (decrease >> sClose sock)
-        return ()
-    howMany = readMVar mvar
-    increase = modifyMVar_ mvar (return . succ)
-    decrease = modifyMVar_ mvar (return . pred)
-    sleep = threadDelay
+runC10kServer srv cnf = runC10kServer' (dispatchS srv) cnf
 
 ----------------------------------------------------------------
 
 {-|
-  Run 'C10kServer' with 'C10kConfig'.
+  Run 'C10kServerH' with 'C10kConfig'.
 -}
 runC10kServerH :: C10kServerH -> C10kConfig -> IO ()
-runC10kServerH srv cnf = do
+runC10kServerH srv cnf = runC10kServer' (dispatchH srv) cnf
+
+----------------------------------------------------------------
+
+runC10kServer' :: (Socket -> Dispatch) -> C10kConfig -> IO ()
+runC10kServer' sDispatch cnf = do
     initHook cnf `catch` ignore
-    initServerH srv cnf `catch` errorHandle
+    initServer sDispatch cnf `catch` errorHandle
     parentStartedHook cnf `catch` ignore
     doNothing
   where
@@ -190,14 +121,14 @@ runC10kServerH srv cnf = do
 
 ----------------------------------------------------------------
 
-initServerH :: C10kServerH -> C10kConfig -> IO ()
-initServerH srv cnf = do
+initServer :: (Socket -> Dispatch) -> C10kConfig -> IO ()
+initServer sDispatch cnf = do
     let port = Service $ portName cnf
         n    = preforkProcessNumber cnf
         pidf = pidFile cnf
     s <- listenOn port
     setGroupUser
-    preForkH s n srv cnf
+    preFork n (sDispatch s) cnf
     sClose s
     writePidFile pidf
   where
@@ -210,11 +141,11 @@ initServerH srv cnf = do
         getGroupEntryForName (group cnf) >>= setGroupID . groupID
         getUserEntryForName (user cnf) >>= setUserID . userID
 
-preForkH :: Socket -> Int -> C10kServerH -> C10kConfig -> IO ()
-preForkH s n srv cnf = do
+preFork :: Int -> Dispatch -> C10kConfig -> IO ()
+preFork n dispatch cnf = do
     ignoreSigChild
     pid <- getProcessID
-    cids <- replicateM n $ forkProcess (runServerH s srv cnf)
+    cids <- replicateM n $ forkProcess (runServer dispatch cnf)
     mapM_ (terminator pid cids) [sigTERM,sigINT]
   where
     ignoreSigChild = installHandler sigCHLD Ignore Nothing
@@ -226,29 +157,42 @@ preForkH s n srv cnf = do
 
 ----------------------------------------------------------------
 
-runServerH :: Socket -> C10kServerH -> C10kConfig -> IO ()
-runServerH s srv cnf = do
+runServer :: Dispatch -> C10kConfig -> IO ()
+runServer dispatch cnf = do
     startedHook cnf
     mvar <- newMVar 0
-    dispatchOrSleepH mvar s srv cnf
+    dispatchOrSleep mvar dispatch cnf
 
-dispatchOrSleepH :: MVar Int -> Socket -> C10kServerH -> C10kConfig -> IO ()
-dispatchOrSleepH mvar s srv cnf = do
+dispatchOrSleep :: MVar Int -> Dispatch -> C10kConfig -> IO ()
+dispatchOrSleep mvar dispatch cnf = do
     n <- howMany
     if n > threadNumberPerProcess cnf
         then sleep (sleepTimer cnf * microseconds)
-        else dispatch
-    dispatchOrSleepH mvar s srv cnf
+        else dispatch increase decrease
+    dispatchOrSleep mvar dispatch cnf
   where
-    dispatch = do
-        (hdl,tcpi) <- T.accept s
-        increase
-        forkIO $ srv hdl tcpi `finally` (decrease >> hClose hdl)
-        return ()
     howMany = readMVar mvar
     increase = modifyMVar_ mvar (return . succ)
     decrease = modifyMVar_ mvar (return . pred)
     sleep = threadDelay
+
+----------------------------------------------------------------
+
+type Dispatch = IO () -> IO () -> IO ()
+
+dispatchS :: C10kServer -> Socket -> Dispatch
+dispatchS srv sock inc dec = do
+    (connsock,_) <- accept sock
+    inc
+    forkIO $ srv connsock `finally` (dec >> sClose connsock)
+    return ()
+
+dispatchH :: C10kServerH -> Socket -> Dispatch
+dispatchH srv sock inc dec = do
+    (hdl,tcpi) <- T.accept sock
+    inc
+    forkIO $ srv hdl tcpi `finally` (dec >> hClose hdl)
+    return ()
 
 ----------------------------------------------------------------
 
