@@ -31,10 +31,11 @@ import Network.Socket
 import Prelude hiding (catch)
 import Network.TCPInfo hiding (accept)
 import qualified Network.TCPInfo as T (accept)
+import System.Exit
 import System.Posix.Process
 import System.Posix.Signals
+import System.Posix.Types
 import System.Posix.User
-import System.Exit
 
 ----------------------------------------------------------------
 
@@ -92,45 +93,55 @@ data C10kConfig = C10kConfig {
   Run 'C10kServer' with 'C10kConfig'.
 -}
 runC10kServer :: C10kServer -> C10kConfig -> IO ()
-runC10kServer srv cnf = runC10kServer' (dispatchS srv) cnf
-
-----------------------------------------------------------------
+runC10kServer srv cnf = runC10kServer' (dispatchS srv) cnf `catch` errorHandle cnf
 
 {-|
   Run 'C10kServerH' with 'C10kConfig'.
 -}
 runC10kServerH :: C10kServerH -> C10kConfig -> IO ()
-runC10kServerH srv cnf = runC10kServer' (dispatchH srv) cnf
+runC10kServerH srv cnf = runC10kServer' (dispatchH srv) cnf `catch` errorHandle cnf
+
+errorHandle :: C10kConfig -> SomeException -> IO ()
+errorHandle cnf e = do
+    exitHook cnf (show e)
+    exitFailure
 
 ----------------------------------------------------------------
 
 runC10kServer' :: (Socket -> Dispatch) -> C10kConfig -> IO ()
 runC10kServer' sDispatch cnf = do
     initHook cnf `catch` ignore
-    initServer sDispatch cnf `catch` errorHandle
+    cids <- initServer sDispatch cnf -- `catch` errorHandle
+    handleSignal cids
     parentStartedHook cnf `catch` ignore
-    doNothing
+    pause
+    terminateChildren cids
   where
-    errorHandle :: SomeException -> IO ()
-    errorHandle e = do
-      exitHook cnf (show e)
-      exitFailure
-    doNothing = do
-      threadDelay $ 5 * microseconds
-      doNothing
+    handleSignal cids = do
+        ignoreSigChild
+        mapM_ (terminator cids) [sigTERM,sigINT]
+    pause = awaitSignal Nothing >> yield
+    initHandler func sig = installHandler sig func Nothing
+    ignoreSigChild = initHandler Ignore sigCHLD
+    terminator cids sig = initHandler (Catch (terminateChildren cids)) sig
+    terminateChildren cids = do
+        ignoreSigChild
+        mapM_ terminateChild cids
+    terminateChild cid = signalProcess sigTERM cid `catch` ignore
 
 ----------------------------------------------------------------
 
-initServer :: (Socket -> Dispatch) -> C10kConfig -> IO ()
+initServer :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
 initServer sDispatch cnf = do
     let port = Service $ portName cnf
         n    = preforkProcessNumber cnf
         pidf = pidFile cnf
     s <- listenOn port
     setGroupUser
-    preFork n (sDispatch s) cnf
+    cids <- preFork n (sDispatch s) cnf
     sClose s
     writePidFile pidf
+    return cids
   where
     writePidFile pidf = do
         pid <- getProcessID
@@ -141,19 +152,9 @@ initServer sDispatch cnf = do
         getGroupEntryForName (group cnf) >>= setGroupID . groupID
         getUserEntryForName (user cnf) >>= setUserID . userID
 
-preFork :: Int -> Dispatch -> C10kConfig -> IO ()
-preFork n dispatch cnf = do
-    ignoreSigChild
-    pid <- getProcessID
-    cids <- replicateM n $ forkProcess (runServer dispatch cnf)
-    mapM_ (terminator pid cids) [sigTERM,sigINT]
-  where
-    ignoreSigChild = installHandler sigCHLD Ignore Nothing
-    terminator pid cids sig = installHandler sig (Catch (terminate pid cids)) Nothing
-    terminate pid cids = do
-        mapM_ terminateChild cids
-        signalProcess killProcess pid
-    terminateChild cid =  signalProcess sigTERM cid `catch` ignore
+preFork :: Int -> Dispatch -> C10kConfig -> IO [ProcessID]
+preFork n dispatch cnf =
+    replicateM n $ forkProcess (runServer dispatch cnf)
 
 ----------------------------------------------------------------
 
