@@ -111,7 +111,7 @@ errorHandle cnf e = do
 runC10kServer' :: (Socket -> Dispatch) -> C10kConfig -> IO ()
 runC10kServer' sDispatch cnf = do
     initHook cnf `catch` ignore
-    cids <- initServer sDispatch cnf -- `catch` errorHandle
+    cids <- initServer sDispatch cnf
     handleSignal cids
     parentStartedHook cnf `catch` ignore
     pause
@@ -133,28 +133,24 @@ runC10kServer' sDispatch cnf = do
 
 initServer :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
 initServer sDispatch cnf = do
-    let port = Service $ portName cnf
-        n    = preforkProcessNumber cnf
-        pidf = pidFile cnf
     s <- listenOn port
     setGroupUser
-    cids <- preFork n (sDispatch s) cnf
+    cids <- preFork (sDispatch s)
     sClose s
-    writePidFile pidf
+    writePidFile
     return cids
   where
-    writePidFile pidf = do
+    port = Service $ portName cnf
+    writePidFile = do
         pid <- getProcessID
-        writeFile pidf $ show pid ++ "\n"
+        writeFile (pidFile cnf) $ show pid ++ "\n"
+    n = preforkProcessNumber cnf
+    preFork dispatch = replicateM n . forkProcess $ runServer dispatch cnf
     setGroupUser = do
       uid <- getRealUserID
       when (uid == 0) $ do
         getGroupEntryForName (group cnf) >>= setGroupID . groupID
         getUserEntryForName (user cnf) >>= setUserID . userID
-
-preFork :: Int -> Dispatch -> C10kConfig -> IO [ProcessID]
-preFork n dispatch cnf =
-    replicateM n $ forkProcess (runServer dispatch cnf)
 
 ----------------------------------------------------------------
 
