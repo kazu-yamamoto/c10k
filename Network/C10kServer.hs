@@ -111,9 +111,32 @@ errorHandle cnf e = do
 runC10kServer' :: (Socket -> Dispatch) -> C10kConfig -> IO ()
 runC10kServer' sDispatch cnf = do
     initHook cnf `catch` ignore
-    cids <- initServer sDispatch cnf
-    handleSignal cids
+    if onlyOne
+       then stay sDispatch cnf
+       else prefork sDispatch cnf
+  where
+    onlyOne = preforkProcessNumber cnf == 1
+
+----------------------------------------------------------------
+
+stay :: (Socket -> Dispatch) -> C10kConfig -> IO ()
+stay sDispatch cnf = do
     parentStartedHook cnf `catch` ignore
+    s <- listenOn port
+    writePidFile cnf
+    setGroupUser cnf
+    runServer (sDispatch s) cnf
+    sClose s
+  where
+    port = Service $ portName cnf
+
+----------------------------------------------------------------
+
+prefork :: (Socket -> Dispatch) -> C10kConfig -> IO ()
+prefork sDispatch cnf = do
+    cids <- doPrefork sDispatch cnf
+    parentStartedHook cnf `catch` ignore
+    handleSignal cids
     pause
     terminateChildren cids
   where
@@ -131,26 +154,32 @@ runC10kServer' sDispatch cnf = do
 
 ----------------------------------------------------------------
 
-initServer :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
-initServer sDispatch cnf = do
+doPrefork :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
+doPrefork sDispatch cnf = do
     s <- listenOn port
-    setGroupUser
-    cids <- preFork (sDispatch s)
+    writePidFile cnf
+    setGroupUser cnf
+    cids <- fork (sDispatch s)
     sClose s
-    writePidFile
     return cids
   where
     port = Service $ portName cnf
-    writePidFile = do
-        pid <- getProcessID
-        writeFile (pidFile cnf) $ show pid ++ "\n"
     n = preforkProcessNumber cnf
-    preFork dispatch = replicateM n . forkProcess $ runServer dispatch cnf
-    setGroupUser = do
-      uid <- getRealUserID
-      when (uid == 0) $ do
+    fork dispatch = replicateM n . forkProcess $ runServer dispatch cnf
+
+----------------------------------------------------------------
+
+setGroupUser :: C10kConfig -> IO ()
+setGroupUser cnf = do
+    uid <- getRealUserID
+    when (uid == 0) $ do
         getGroupEntryForName (group cnf) >>= setGroupID . groupID
         getUserEntryForName (user cnf) >>= setUserID . userID
+
+writePidFile :: C10kConfig -> IO ()
+writePidFile cnf = do
+    pid <- getProcessID
+    writeFile (pidFile cnf) $ show pid ++ "\n"
 
 ----------------------------------------------------------------
 
