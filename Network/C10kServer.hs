@@ -26,7 +26,6 @@ import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import IO hiding (catch, try)
-import Network hiding (accept, listenOn)
 import Network.BSD
 import Network.Socket
 import Prelude hiding (catch)
