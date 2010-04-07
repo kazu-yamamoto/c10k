@@ -26,7 +26,8 @@ import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import IO hiding (catch, try)
-import Network hiding (accept)
+import Network hiding (accept, listenOn)
+import Network.BSD
 import Network.Socket
 import Prelude hiding (catch)
 import Network.TCPInfo hiding (accept)
@@ -75,6 +76,8 @@ data C10kConfig = C10kConfig {
   , threadNumberPerProcess :: Int
   -- | A port name. e.g. \"http\" or \"80\"
   , portName :: ServiceName
+  -- | A port name. e.g. \"127.0.0.1\"
+  , ipAddr :: Maybe HostName
   -- | A file where the process ID of the parent process is written.
   , pidFile :: FilePath
   -- | A user name. When the program linked with this library runs
@@ -122,13 +125,14 @@ runC10kServer' sDispatch cnf = do
 stay :: (Socket -> Dispatch) -> C10kConfig -> IO ()
 stay sDispatch cnf = do
     parentStartedHook cnf `catch` ignore
-    s <- listenOn port
+    s <- listenOn addr port
     writePidFile cnf
     setGroupUser cnf
     runServer (sDispatch s) cnf
     sClose s
   where
-    port = Service $ portName cnf
+    port = portName cnf
+    addr = ipAddr cnf
 
 ----------------------------------------------------------------
 
@@ -156,14 +160,15 @@ prefork sDispatch cnf = do
 
 doPrefork :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
 doPrefork sDispatch cnf = do
-    s <- listenOn port
+    s <- listenOn addr port
     writePidFile cnf
     setGroupUser cnf
     cids <- fork (sDispatch s)
     sClose s
     return cids
   where
-    port = Service $ portName cnf
+    port = portName cnf
+    addr = ipAddr cnf
     n = preforkProcessNumber cnf
     fork dispatch = replicateM n . forkProcess $ runServer dispatch cnf
 
@@ -227,3 +232,23 @@ ignore _ = return ()
 
 microseconds :: Int
 microseconds = 1000000
+
+----------------------------------------------------------------
+
+listenOn :: Maybe HostName -> ServiceName -> IO Socket
+listenOn maddr serv = do
+    proto <- getProtocolNumber "tcp"
+    let hints = defaultHints {
+            addrFlags = [ AI_ADDRCONFIG, AI_NUMERICHOST
+                        , AI_NUMERICSERV, AI_PASSIVE
+                        ]
+          , addrSocketType = Stream
+          , addrProtocol = proto
+          }
+    ais <- getAddrInfo (Just hints) maddr (Just serv)
+    let ai = head ais
+    sock <- socket (addrFamily ai) (addrSocketType ai) (addrProtocol ai)
+    setSocketOption sock ReuseAddr 1
+    bindSocket sock (addrAddress ai)
+    listen sock maxListenQueue
+    return sock
