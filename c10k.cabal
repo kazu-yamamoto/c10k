@@ -4,7 +4,7 @@ Author:                 Kazu Yamamoto <kazu@iij.ad.jp>
 Maintainer:             Kazu Yamamoto <kazu@iij.ad.jp>
 License:                BSD3
 License-File:           LICENSE
-Synopsis:               C10k server library
+Synopsis:               C10k server library using prefork
 Description:            Network server library to handle
 			over 10,000 connections. Since GHC 6.10.4 or
 			earlier uses select(), it cannot handle
