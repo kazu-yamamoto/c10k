@@ -1,13 +1,17 @@
 {-|
   Network server library to handle over 10,000 connections. Since
-  GHC 6.10.4 or earlier uses select(), it cannot handle connections over
+  GHC 6.12 or earlier uses select(), it cannot handle connections over
   1,024. This library uses the \"prefork\" technique to get over the
   barrier. Each process handles 'threadNumberPerProcess' connections.
   'preforkProcessNumber' child server processes are preforked. So, this
   server can handle 'preforkProcessNumber' * 'threadNumberPerProcess'
   connections.
 
-  Even if GHC supports kqueue or epoll(), it is difficult for RTS
+  Programs complied by GHC 6.10 or earlier with the -threaded option
+  kill the IO thread when forkProcess is used. So, don't specify
+  the -threaded option to use this library.
+
+  Even if GHC 6.14 supports kqueue or epoll(), it is difficult for RTS
   to balance over multi-cores. So, this library can be used to
   make a process for each core and to set limitation of the number
   to accept connections.
@@ -75,7 +79,7 @@ data C10kConfig = C10kConfig {
   , threadNumberPerProcess :: Int
   -- | A port name. e.g. \"http\" or \"80\"
   , portName :: ServiceName
-  -- | A port name. e.g. \"127.0.0.1\"
+  -- | A numeric IP address. e.g. \"127.0.0.1\"
   , ipAddr :: Maybe HostName
   -- | A file where the process ID of the parent process is written.
   , pidFile :: FilePath
