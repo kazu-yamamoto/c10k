@@ -153,7 +153,7 @@ prefork sDispatch cnf = do
     pause = awaitSignal Nothing >> yield
     initHandler func sig = installHandler sig func Nothing
     ignoreSigChild = initHandler Ignore sigCHLD
-    terminator cids sig = initHandler (Catch (terminateChildren cids)) sig
+    terminator cids = initHandler (Catch (terminateChildren cids))
     terminateChildren cids = do
         ignoreSigChild
         mapM_ terminateChild cids
