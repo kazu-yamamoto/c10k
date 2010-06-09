@@ -29,7 +29,7 @@ module Network.C10kServer (
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
-import IO hiding (catch, try)
+import System.IO
 import Network.BSD
 import Network.Socket
 import Prelude hiding (catch)
