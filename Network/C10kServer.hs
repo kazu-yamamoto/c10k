@@ -194,47 +194,32 @@ writePidFile cnf = do
 runServer :: Dispatch -> C10kConfig -> IO ()
 runServer dispatch cnf = do
     startedHook cnf
-    mvar <- newMVar 0
-    dispatchOrSleep mvar dispatch cnf
-
-dispatchOrSleep :: MVar Int -> Dispatch -> C10kConfig -> IO ()
-dispatchOrSleep mvar dispatch cnf = do
-    n <- howMany
-    if n > threadNumberPerProcess cnf
-        then sleep (sleepTimer cnf * microseconds)
-        else dispatch increase decrease
-    dispatchOrSleep mvar dispatch cnf
+    loop
   where
-    howMany = readMVar mvar
-    increase = modifyMVar_ mvar (return . succ)
-    decrease = modifyMVar_ mvar (return . pred)
-    sleep = threadDelay
-
+    loop = do
+        dispatch
+        loop
+        
 ----------------------------------------------------------------
 
-type Dispatch = IO () -> IO () -> IO ()
+type Dispatch = IO ()
 
 dispatchS :: C10kServer -> Socket -> Dispatch
-dispatchS srv sock inc dec = do
+dispatchS srv sock = do
     (connsock,_) <- accept sock
-    inc
-    forkIO $ srv connsock `finally` (dec >> sClose connsock)
+    forkIO $ srv connsock `finally` sClose connsock
     return ()
 
 dispatchH :: C10kServerH -> Socket -> Dispatch
-dispatchH srv sock inc dec = do
+dispatchH srv sock = do
     (hdl,tcpi) <- T.accept sock
-    inc
-    forkIO $ srv hdl tcpi `finally` (dec >> hClose hdl)
+    forkIO $ srv hdl tcpi `finally` hClose hdl
     return ()
 
 ----------------------------------------------------------------
 
 ignore :: SomeException -> IO ()
 ignore _ = return ()
-
-microseconds :: Int
-microseconds = 1000000
 
 ----------------------------------------------------------------
 
