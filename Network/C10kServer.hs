@@ -128,7 +128,7 @@ runC10kServer' sDispatch cnf = do
 stay :: (Socket -> Dispatch) -> C10kConfig -> IO ()
 stay sDispatch cnf = do
     parentStartedHook cnf `catch` ignore
-    s <- listenOn addr port
+    s <- listenTo addr port
     writePidFile cnf
     setGroupUser cnf
     runServer (sDispatch s) cnf
@@ -163,7 +163,7 @@ prefork sDispatch cnf = do
 
 doPrefork :: (Socket -> Dispatch) -> C10kConfig -> IO [ProcessID]
 doPrefork sDispatch cnf = do
-    s <- listenOn addr port
+    s <- listenTo addr port
     writePidFile cnf
     setGroupUser cnf
     cids <- fork (sDispatch s)
@@ -238,8 +238,8 @@ microseconds = 1000000
 
 ----------------------------------------------------------------
 
-listenOn :: Maybe HostName -> ServiceName -> IO Socket
-listenOn maddr serv = do
+listenTo :: Maybe HostName -> ServiceName -> IO Socket
+listenTo maddr serv = do
     proto <- getProtocolNumber "tcp"
     let hints = defaultHints {
             addrFlags = [ AI_ADDRCONFIG, AI_NUMERICHOST
