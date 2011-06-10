@@ -248,10 +248,11 @@ listenTo maddr serv = do
           , addrSocketType = Stream
           , addrProtocol = proto
           }
-    ais <- getAddrInfo (Just hints) maddr (Just serv)
-    let ai = head ais
-    sock <- socket (addrFamily ai) (addrSocketType ai) (addrProtocol ai)
+    addrs <- getAddrInfo (Just hints) maddr (Just serv)
+    let addrs' = filter (\x -> addrFamily x == AF_INET6) addrs
+        addr = if null addrs' then head addrs else head addrs'
+    sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
     setSocketOption sock ReuseAddr 1
-    bindSocket sock (addrAddress ai)
+    bindSocket sock (addrAddress addr)
     listen sock maxListenQueue
     return sock
