@@ -7,12 +7,8 @@
   server can handle 'preforkProcessNumber' * 'threadNumberPerProcess'
   connections.
 
-  Programs complied by GHC 6.10 or earlier with the -threaded option
-  kill the IO thread when forkProcess is used. So, don't specify
-  the -threaded option to use this library.
-
-  Even if GHC 6.14 supports kqueue or epoll(), it is difficult for RTS
-  to balance over multi-cores. So, this library can be used to
+  GHC 7 supports kqueue or epoll() but it is difficult
+  to balance over multi-core. So, this library can be used to
   make a process for each core and to set limitation of the number
   to accept connections.
 
@@ -29,13 +25,14 @@ module Network.C10kServer (
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
-import System.IO
+import Data.IORef
 import Network.BSD
 import Network.Socket
-import Prelude hiding (catch)
-import Network.TCPInfo hiding (accept)
 import qualified Network.TCPInfo as T (accept)
+import Network.TCPInfo hiding (accept)
+import Prelude hiding (catch)
 import System.Exit
+import System.IO
 import System.Posix.Process
 import System.Posix.Signals
 import System.Posix.Types
@@ -194,20 +191,20 @@ writePidFile cnf = do
 runServer :: Dispatch -> C10kConfig -> IO ()
 runServer dispatch cnf = do
     startedHook cnf
-    mvar <- newMVar 0
-    dispatchOrSleep mvar dispatch cnf
+    ref <- newIORef 0 :: IO (IORef Int)
+    dispatchOrSleep ref dispatch cnf
 
-dispatchOrSleep :: MVar Int -> Dispatch -> C10kConfig -> IO ()
-dispatchOrSleep mvar dispatch cnf = do
+dispatchOrSleep :: IORef Int -> Dispatch -> C10kConfig -> IO ()
+dispatchOrSleep ref dispatch cnf = do
     n <- howMany
     if n > threadNumberPerProcess cnf
         then sleep (sleepTimer cnf * microseconds)
         else dispatch increase decrease
-    dispatchOrSleep mvar dispatch cnf
+    dispatchOrSleep ref dispatch cnf
   where
-    howMany = readMVar mvar
-    increase = modifyMVar_ mvar (return . succ)
-    decrease = modifyMVar_ mvar (return . pred)
+    howMany = readIORef ref
+    increase = atomicModifyIORef ref (\n -> (n+1,()))
+    decrease = atomicModifyIORef ref (\n -> (n-1,()))
     sleep = threadDelay
 
 ----------------------------------------------------------------
