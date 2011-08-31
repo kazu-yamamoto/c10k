@@ -20,9 +20,9 @@ Cabal-Version:          >= 1.6
 Build-Type:             Simple
 Library
   if impl(ghc >= 6.12)
-    GHC-Options:        -Wall -O2 -fno-warn-unused-do-bind
+    GHC-Options:        -Wall -fno-warn-unused-do-bind
   else
-    GHC-Options:        -Wall -O2
+    GHC-Options:        -Wall
   Exposed-Modules:      Network.C10kServer
                         Network.TCPInfo
   Build-Depends:        base >= 4 && < 5, network, unix
