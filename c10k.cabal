@@ -1,5 +1,5 @@
 Name:                   c10k
-Version:                0.4.1
+Version:                0.5.0
 Author:                 Kazu Yamamoto <kazu@iij.ad.jp>
 Maintainer:             Kazu Yamamoto <kazu@iij.ad.jp>
 License:                BSD3
@@ -25,7 +25,7 @@ Library
     GHC-Options:        -Wall -O2
   Exposed-Modules:      Network.C10kServer
                         Network.TCPInfo
-  Build-Depends:        base >= 4 && < 5, haskell98, network, unix
+  Build-Depends:        base >= 4 && < 5, network, unix
 Source-Repository head
   Type:                 git
   Location:             git://github.com/kazu-yamamoto/c10k.git
