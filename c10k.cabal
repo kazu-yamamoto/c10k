@@ -10,7 +10,7 @@ Description:            Network server library to handle
 			earlier uses select(), it cannot handle
 			connections over 1,024. This library uses
 			the prefork technique to get over the barrier.
-                        Programs complied by GHC 6.10 or earlier
+                        Programs compiled by GHC 6.10 or earlier
                         with the -threaded option kill the IO thread
                         when forkProcess is used. So, don't specify
                         the -threaded option to use this library.
